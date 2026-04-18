@@ -42,9 +42,9 @@ export default function TransactionsPage() {
       <TransactionModal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setSelected(null) }}
-        onSave={async (t) => { await addTx(t); toast('success', 'Transacción agregada') }}
-        onUpdate={async (t) => { await updateTx(t); toast('success', 'Actualizada') }}
-        onDelete={async (id) => { await deleteTx(id); toast('success', 'Eliminada') }}
+        onSave={async (t) => { try { await addTx(t); toast('success', 'Transacción agregada') } catch(e) { toast('error', e instanceof Error ? e.message : 'Error al guardar') } }}
+        onUpdate={async (t) => { try { await updateTx(t); toast('success', 'Actualizada') } catch(e) { toast('error', e instanceof Error ? e.message : 'Error') } }}
+        onDelete={async (id) => { try { await deleteTx(id); toast('success', 'Eliminada') } catch(e) { toast('error', e instanceof Error ? e.message : 'Error') } }}
         initial={selected}
       />
     </div>

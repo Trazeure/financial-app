@@ -1,19 +1,17 @@
 import { Transaction, Config, GoogleToken } from './types'
-import {
-  SHEETS,
-  TRANSACTION_HEADERS,
-  CONFIG_DEFAULTS,
-  CATEGORIES,
-} from './constants'
+import { SHEETS, TRANSACTION_HEADERS, CONFIG_DEFAULTS, CATEGORIES } from './constants'
 import { generateId } from './utils'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 
-async function request<T>(
-  url: string,
-  options: RequestInit,
-  retries = 3
-): Promise<T> {
+// Only encode the sheet name, NOT the cell range notation (A:G, A1:B3, etc.)
+function encodeRange(range: string): string {
+  const bang = range.indexOf('!')
+  if (bang === -1) return range
+  return encodeURIComponent(range.substring(0, bang)) + '!' + range.substring(bang + 1)
+}
+
+async function request<T>(url: string, options: RequestInit, retries = 3): Promise<T> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const res = await fetch(url, options)
@@ -30,58 +28,17 @@ async function request<T>(
   throw new Error('Max retries exceeded')
 }
 
-function headers(token: string) {
+function authHeaders(token: string) {
   return {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   }
 }
 
-export async function createSpreadsheet(token: string, title = 'Finanzas Personales'): Promise<string> {
-  const body = {
-    properties: { title },
-    sheets: [
-      { properties: { title: SHEETS.TRANSACTIONS } },
-      { properties: { title: SHEETS.CONFIG } },
-      { properties: { title: SHEETS.CATEGORIES } },
-    ],
-  }
-  const res = await request<{ spreadsheetId: string }>(
-    'https://sheets.googleapis.com/v4/spreadsheets',
-    { method: 'POST', headers: headers(token), body: JSON.stringify(body) }
-  )
-  await initializeSheets(token, res.spreadsheetId)
-  return res.spreadsheetId
-}
-
-async function initializeSheets(token: string, id: string) {
-  const values = [
-    { range: `${SHEETS.TRANSACTIONS}!A1`, values: [TRANSACTION_HEADERS] },
-    {
-      range: `${SHEETS.CONFIG}!A1`,
-      values: [
-        ['salarioMensual', CONFIG_DEFAULTS.salarioMensual],
-        ['metaAhorro', CONFIG_DEFAULTS.metaAhorro],
-        ['moneda', CONFIG_DEFAULTS.moneda],
-      ],
-    },
-    {
-      range: `${SHEETS.CATEGORIES}!A1`,
-      values: CATEGORIES.map(c => [c.nombre, c.tipo]),
-    },
-  ]
-  for (const v of values) {
-    await request(
-      `${BASE_URL}/${id}/values/${encodeURIComponent(v.range)}?valueInputOption=USER_ENTERED`,
-      { method: 'PUT', headers: headers(token), body: JSON.stringify({ values: v.values }) }
-    )
-  }
-}
-
 export async function getTransactions(token: string, id: string): Promise<Transaction[]> {
   const res = await request<{ values?: string[][] }>(
-    `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.TRANSACTIONS + '!A2:G')}`,
-    { method: 'GET', headers: headers(token) }
+    `${BASE_URL}/${id}/values/${encodeRange(SHEETS.TRANSACTIONS + '!A2:G')}`,
+    { method: 'GET', headers: authHeaders(token) }
   )
   if (!res.values) return []
   return res.values
@@ -97,32 +54,30 @@ export async function getTransactions(token: string, id: string): Promise<Transa
     }))
 }
 
-export async function addTransaction(
-  token: string,
-  id: string,
-  t: Omit<Transaction, 'id'>
-): Promise<Transaction> {
+export async function addTransaction(token: string, id: string, t: Omit<Transaction, 'id'>): Promise<Transaction> {
   const newId = generateId()
   const row = [newId, t.fecha, t.tipo, t.categoria, t.descripcion, t.monto, t.metodoPago]
+  const range = encodeRange(SHEETS.TRANSACTIONS + '!A:G')
   await request(
-    `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.TRANSACTIONS + '!A:G')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', headers: headers(token), body: JSON.stringify({ values: [row] }) }
+    `${BASE_URL}/${id}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ values: [row] }) }
   )
   return { id: newId, ...t }
 }
 
 export async function updateTransaction(
   token: string,
-  id: string,
+  txId: string,
   spreadsheetId: string,
   transactions: Transaction[],
   updated: Transaction
 ): Promise<void> {
-  const rowIndex = transactions.findIndex(t => t.id === id) + 2
+  const rowIndex = transactions.findIndex(t => t.id === txId) + 2
   const row = [updated.id, updated.fecha, updated.tipo, updated.categoria, updated.descripcion, updated.monto, updated.metodoPago]
+  const range = encodeRange(`${SHEETS.TRANSACTIONS}!A${rowIndex}:G${rowIndex}`)
   await request(
-    `${BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(SHEETS.TRANSACTIONS + `!A${rowIndex}:G${rowIndex}`)}?valueInputOption=USER_ENTERED`,
-    { method: 'PUT', headers: headers(token), body: JSON.stringify({ values: [row] }) }
+    `${BASE_URL}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`,
+    { method: 'PUT', headers: authHeaders(token), body: JSON.stringify({ values: [row] }) }
   )
 }
 
@@ -133,23 +88,20 @@ export async function deleteTransaction(
   transactions: Transaction[]
 ): Promise<void> {
   const rowIndex = transactions.findIndex(t => t.id === txId) + 2
+  const range = encodeRange(`${SHEETS.TRANSACTIONS}!A${rowIndex}:G${rowIndex}`)
   await request(
-    `${BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(SHEETS.TRANSACTIONS + `!A${rowIndex}:G${rowIndex}`)}:clear`,
-    { method: 'POST', headers: headers(token), body: JSON.stringify({}) }
+    `${BASE_URL}/${spreadsheetId}/values/${range}:clear`,
+    { method: 'POST', headers: authHeaders(token), body: JSON.stringify({}) }
   )
 }
 
 export async function getConfig(token: string, id: string): Promise<Config> {
   const res = await request<{ values?: string[][] }>(
-    `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.CONFIG + '!A1:B3')}`,
-    { method: 'GET', headers: headers(token) }
+    `${BASE_URL}/${id}/values/${encodeRange(SHEETS.CONFIG + '!A1:B3')}`,
+    { method: 'GET', headers: authHeaders(token) }
   )
   const map: Record<string, string> = {}
-  if (res.values) {
-    res.values.forEach(row => {
-      if (row[0]) map[row[0]] = row[1] || ''
-    })
-  }
+  if (res.values) res.values.forEach(row => { if (row[0]) map[row[0]] = row[1] || '' })
   return {
     salarioMensual: parseFloat(map.salarioMensual) || 0,
     metaAhorro: parseFloat(map.metaAhorro) || 20,
@@ -164,74 +116,53 @@ export async function saveConfig(token: string, id: string, config: Config): Pro
     ['moneda', config.moneda],
   ]
   await request(
-    `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.CONFIG + '!A1:B3')}?valueInputOption=USER_ENTERED`,
-    { method: 'PUT', headers: headers(token), body: JSON.stringify({ values }) }
+    `${BASE_URL}/${id}/values/${encodeRange(SHEETS.CONFIG + '!A1:B3')}?valueInputOption=USER_ENTERED`,
+    { method: 'PUT', headers: authHeaders(token), body: JSON.stringify({ values }) }
   )
-}
-
-export async function verifySpreadsheet(token: string, id: string): Promise<boolean> {
-  try {
-    await request<unknown>(
-      `${BASE_URL}/${id}?fields=spreadsheetId`,
-      { method: 'GET', headers: headers(token) }
-    )
-    return true
-  } catch {
-    return false
-  }
 }
 
 export async function initializeSheetIfNeeded(token: string, id: string): Promise<void> {
   const res = await request<{ sheets: { properties: { title: string } }[] }>(
     `${BASE_URL}/${id}?fields=sheets.properties.title`,
-    { method: 'GET', headers: headers(token) }
+    { method: 'GET', headers: authHeaders(token) }
   )
 
-  const existingTitles = res.sheets.map(s => s.properties.title)
-  const needed = [SHEETS.TRANSACTIONS, SHEETS.CONFIG, SHEETS.CATEGORIES].filter(
-    t => !existingTitles.includes(t)
-  )
+  const existing = res.sheets.map(s => s.properties.title)
+  const needed = [SHEETS.TRANSACTIONS, SHEETS.CONFIG, SHEETS.CATEGORIES].filter(t => !existing.includes(t))
 
   if (needed.length > 0) {
     await request(`${BASE_URL}/${id}:batchUpdate`, {
       method: 'POST',
-      headers: headers(token),
-      body: JSON.stringify({
-        requests: needed.map(title => ({
-          addSheet: { properties: { title } },
-        })),
-      }),
+      headers: authHeaders(token),
+      body: JSON.stringify({ requests: needed.map(title => ({ addSheet: { properties: { title } } })) }),
     })
   }
 
-  const checks = await Promise.all([
-    request<{ values?: string[][] }>(
-      `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.TRANSACTIONS + '!A1:G1')}`,
-      { method: 'GET', headers: headers(token) }
-    ),
-    request<{ values?: string[][] }>(
-      `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.CONFIG + '!A1:B1')}`,
-      { method: 'GET', headers: headers(token) }
-    ),
+  const [txCheck, cfgCheck] = await Promise.all([
+    request<{ values?: string[][] }>(`${BASE_URL}/${id}/values/${encodeRange(SHEETS.TRANSACTIONS + '!A1:G1')}`, { method: 'GET', headers: authHeaders(token) }),
+    request<{ values?: string[][] }>(`${BASE_URL}/${id}/values/${encodeRange(SHEETS.CONFIG + '!A1:B1')}`, { method: 'GET', headers: authHeaders(token) }),
   ])
 
   const writes: { range: string; values: (string | number)[][] }[] = []
-
-  if (!checks[0].values?.length) {
-    writes.push({ range: `${SHEETS.TRANSACTIONS}!A1`, values: [TRANSACTION_HEADERS] })
-  }
-  if (!checks[1].values?.length) {
-    writes.push(
-      { range: `${SHEETS.CONFIG}!A1`, values: [['salarioMensual', CONFIG_DEFAULTS.salarioMensual], ['metaAhorro', CONFIG_DEFAULTS.metaAhorro], ['moneda', CONFIG_DEFAULTS.moneda]] },
-    )
-  }
+  if (!txCheck.values?.length) writes.push({ range: `${SHEETS.TRANSACTIONS}!A1`, values: [TRANSACTION_HEADERS] })
+  if (!cfgCheck.values?.length) writes.push({
+    range: `${SHEETS.CONFIG}!A1`,
+    values: [['salarioMensual', CONFIG_DEFAULTS.salarioMensual], ['metaAhorro', CONFIG_DEFAULTS.metaAhorro], ['moneda', CONFIG_DEFAULTS.moneda]],
+  })
 
   for (const w of writes) {
     await request(
-      `${BASE_URL}/${id}/values/${encodeURIComponent(w.range)}?valueInputOption=USER_ENTERED`,
-      { method: 'PUT', headers: headers(token), body: JSON.stringify({ values: w.values }) }
+      `${BASE_URL}/${id}/values/${encodeRange(w.range)}?valueInputOption=USER_ENTERED`,
+      { method: 'PUT', headers: authHeaders(token), body: JSON.stringify({ values: w.values }) }
     )
   }
+}
+
+export async function verifySpreadsheet(token: string, id: string): Promise<boolean> {
+  try {
+    await request<unknown>(`${BASE_URL}/${id}?fields=spreadsheetId`, { method: 'GET', headers: authHeaders(token) })
+    return true
+  } catch { return false }
 }
 
 export function isTokenValid(t: GoogleToken): boolean {

@@ -14,7 +14,8 @@
       "Bash(python3 -c \" import sys,json d=json.load\\(sys.stdin\\) for job in d.get\\('jobs',[]\\): print\\('JOB:', job['name'], job['conclusion']\\) for step in job.get\\('steps',[]\\): if step['conclusion'] not in \\('success', 'skipped'\\): print\\(' STEP FAILED:', step['name'], step['conclusion']\\) \")",
       "Bash(curl -s \"https://api.github.com/repos/Trazeure/financial-app/pages\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('source:', d.get\\('source',{}\\)\\); print\\('build_type:', d.get\\('build_type',''\\)\\)\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(git add *)"
     ]
   }
 }

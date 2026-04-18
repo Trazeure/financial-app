@@ -21,8 +21,8 @@ export default function DashboardPage() {
     try {
       await addTx(t)
       toast('success', 'Transacción agregada')
-    } catch {
-      toast('error', 'Error al guardar')
+    } catch (e) {
+      toast('error', e instanceof Error ? e.message : 'Error al guardar')
     }
   }
 
