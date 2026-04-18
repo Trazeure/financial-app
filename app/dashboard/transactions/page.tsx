@@ -3,69 +3,24 @@ import { useState } from 'react'
 import { useApp } from '../layout'
 import { TransactionTable } from '@/components/transactions/TransactionTable'
 import { TransactionModal } from '@/components/transactions/TransactionModal'
-import { ConnectSheets } from '@/components/sheets/ConnectSheets'
+import { GoogleSignIn } from '@/components/sheets/GoogleSignIn'
 import { useToast } from '@/components/ui/Toast'
 import { Transaction } from '@/lib/types'
 
 export default function TransactionsPage() {
-  const {
-    transactions, config, addTx, updateTx, deleteTx,
-    isConnected, getValidToken, connectSheets, setNewSpreadsheetId, sheetsConnecting,
-  } = useApp()
+  const { transactions, config, addTx, updateTx, deleteTx, isConnected, signIn, sheetsConnecting } = useApp()
   const toast = useToast()
   const [modalOpen, setModalOpen] = useState(false)
   const [selected, setSelected] = useState<Transaction | null>(null)
 
-  function openAdd() {
-    setSelected(null)
-    setModalOpen(true)
-  }
-
-  function openEdit(t: Transaction) {
-    setSelected(t)
-    setModalOpen(true)
-  }
-
-  async function handleSave(t: Omit<Transaction, 'id'>) {
-    try {
-      await addTx(t)
-      toast('success', 'Transacción agregada')
-    } catch {
-      toast('error', 'Error al guardar')
-    }
-  }
-
-  async function handleUpdate(t: Transaction) {
-    try {
-      await updateTx(t)
-      toast('success', 'Transacción actualizada')
-    } catch {
-      toast('error', 'Error al actualizar')
-    }
-  }
-
-  async function handleDelete(id: string) {
-    try {
-      await deleteTx(id)
-      toast('success', 'Transacción eliminada')
-    } catch {
-      toast('error', 'Error al eliminar')
-    }
-  }
-
   if (!isConnected) {
     return (
-      <ConnectSheets
-        onConnect={async (id) => {
-          await connectSheets(id)
-          toast('success', 'Hoja conectada')
+      <GoogleSignIn
+        onSignIn={async () => {
+          try { await signIn() }
+          catch (e) { toast('error', e instanceof Error ? e.message : 'Error') }
         }}
-        onNew={(id) => {
-          setNewSpreadsheetId(id)
-          toast('success', 'Hoja creada y conectada')
-        }}
-        getValidToken={getValidToken}
-        connecting={sheetsConnecting}
+        loading={sheetsConnecting}
       />
     )
   }
@@ -80,16 +35,16 @@ export default function TransactionsPage() {
       <TransactionTable
         transactions={transactions}
         config={config}
-        onAdd={openAdd}
-        onEdit={openEdit}
+        onAdd={() => { setSelected(null); setModalOpen(true) }}
+        onEdit={(t) => { setSelected(t); setModalOpen(true) }}
       />
 
       <TransactionModal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setSelected(null) }}
-        onSave={handleSave}
-        onUpdate={handleUpdate}
-        onDelete={handleDelete}
+        onSave={async (t) => { await addTx(t); toast('success', 'Transacción agregada') }}
+        onUpdate={async (t) => { await updateTx(t); toast('success', 'Actualizada') }}
+        onDelete={async (id) => { await deleteTx(id); toast('success', 'Eliminada') }}
         initial={selected}
       />
     </div>

@@ -1,23 +1,19 @@
 'use client'
 import { useState } from 'react'
-import { Plus, RefreshCw, Link2Off } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import { useApp } from './layout'
 import { StatsCards } from '@/components/dashboard/StatsCards'
 import { ExpensesChart } from '@/components/dashboard/ExpensesChart'
 import { TrendChart } from '@/components/dashboard/TrendChart'
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions'
 import { TransactionModal } from '@/components/transactions/TransactionModal'
-import { ConnectSheets } from '@/components/sheets/ConnectSheets'
+import { GoogleSignIn } from '@/components/sheets/GoogleSignIn'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { Transaction } from '@/lib/types'
 
 export default function DashboardPage() {
-  const {
-    transactions, config, loading, error, reload,
-    addTx, isConnected, getValidToken, connectSheets,
-    setNewSpreadsheetId, sheetsConnecting,
-  } = useApp()
+  const { transactions, config, loading, reload, addTx, isConnected, signIn, sheetsConnecting } = useApp()
   const toast = useToast()
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -32,17 +28,15 @@ export default function DashboardPage() {
 
   if (!isConnected) {
     return (
-      <ConnectSheets
-        onConnect={async (id) => {
-          await connectSheets(id)
-          toast('success', 'Hoja conectada')
+      <GoogleSignIn
+        onSignIn={async () => {
+          try {
+            await signIn()
+          } catch (e) {
+            toast('error', e instanceof Error ? e.message : 'Error al conectar')
+          }
         }}
-        onNew={(id) => {
-          setNewSpreadsheetId(id)
-          toast('success', 'Hoja creada y conectada')
-        }}
-        getValidToken={getValidToken}
-        connecting={sheetsConnecting}
+        loading={sheetsConnecting}
       />
     )
   }
@@ -57,13 +51,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={reload}
-            loading={loading}
-            title="Actualizar datos"
-          >
+          <Button variant="ghost" size="sm" onClick={reload} loading={loading}>
             <RefreshCw className="w-4 h-4" />
           </Button>
           <Button size="sm" onClick={() => setModalOpen(true)}>
@@ -72,13 +60,6 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
-
-      {error && (
-        <div className="flex items-center gap-2 p-3 bg-expense-light border border-expense/20 rounded text-sm text-expense mb-5">
-          <Link2Off className="w-4 h-4 shrink-0" />
-          {error}
-        </div>
-      )}
 
       {loading && transactions.length === 0 ? (
         <div className="flex items-center justify-center py-24">
@@ -90,21 +71,15 @@ export default function DashboardPage() {
       ) : (
         <div className="flex flex-col gap-5">
           <StatsCards transactions={transactions} config={config} />
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <ExpensesChart transactions={transactions} config={config} />
             <TrendChart transactions={transactions} config={config} />
           </div>
-
           <RecentTransactions transactions={transactions} config={config} />
         </div>
       )}
 
-      <TransactionModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSave={handleAdd}
-      />
+      <TransactionModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleAdd} />
     </div>
   )
 }

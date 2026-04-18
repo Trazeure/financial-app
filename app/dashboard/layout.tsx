@@ -19,11 +19,9 @@ interface AppContextValue {
   deleteTx: (id: string) => Promise<void>
   updateConfig: (c: Config) => Promise<void>
   isConnected: boolean
-  spreadsheetId: string | null
+  spreadsheetId: string
   getValidToken: () => Promise<string>
-  requestToken: () => Promise<import('@/lib/types').GoogleToken>
-  connectSheets: (id: string) => Promise<void>
-  setNewSpreadsheetId: (id: string) => void
+  signIn: () => Promise<void>
   disconnect: () => void
   sheetsConnecting: boolean
 }
@@ -69,9 +67,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         isConnected: sheets.isConnected,
         spreadsheetId: sheets.spreadsheetId,
         getValidToken: sheets.getValidToken,
-        requestToken: sheets.requestToken,
-        connectSheets: sheets.connectSheets,
-        setNewSpreadsheetId: sheets.setNewSpreadsheetId,
+        signIn: sheets.signIn,
         disconnect: sheets.disconnect,
         sheetsConnecting: sheets.connecting,
       }}

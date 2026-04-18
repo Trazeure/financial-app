@@ -1,22 +1,19 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Save, Link2Off, ExternalLink } from 'lucide-react'
+import { Save, ExternalLink, LogOut } from 'lucide-react'
 import { useApp } from '../layout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { ConnectSheets } from '@/components/sheets/ConnectSheets'
+import { GoogleSignIn } from '@/components/sheets/GoogleSignIn'
 import { useToast } from '@/components/ui/Toast'
 import { Config } from '@/lib/types'
 
-export default function SettingsPage() {
-  const {
-    config, updateConfig, isConnected, spreadsheetId,
-    getValidToken, connectSheets, setNewSpreadsheetId,
-    sheetsConnecting, disconnect,
-  } = useApp()
-  const toast = useToast()
+const SPREADSHEET_ID = '1PCxDaEqNQfHBPkOnx9TMK0qTkEsJaHHTGgY58Dyd544'
 
+export default function SettingsPage() {
+  const { config, updateConfig, isConnected, signIn, disconnect, sheetsConnecting } = useApp()
+  const toast = useToast()
   const [salario, setSalario] = useState('')
   const [meta, setMeta] = useState('')
   const [moneda, setMoneda] = useState('MXN')
@@ -31,12 +28,11 @@ export default function SettingsPage() {
   async function handleSave() {
     setSaving(true)
     try {
-      const newConfig: Config = {
+      await updateConfig({
         salarioMensual: parseFloat(salario) || 0,
         metaAhorro: parseFloat(meta) || 20,
         moneda,
-      }
-      await updateConfig(newConfig)
+      } as Config)
       toast('success', 'Configuración guardada')
     } catch {
       toast('error', 'Error al guardar')
@@ -49,30 +45,15 @@ export default function SettingsPage() {
     <div className="px-6 py-7 max-w-2xl mx-auto">
       <div className="mb-7">
         <h1 className="font-serif italic text-2xl text-text-primary">Configuración</h1>
-        <p className="text-sm text-text-muted mt-0.5">Ajusta tus parámetros financieros</p>
+        <p className="text-sm text-text-muted mt-0.5">Parámetros financieros</p>
       </div>
 
       <div className="flex flex-col gap-5">
         <div className="bg-surface border border-border rounded-lg p-6">
           <h2 className="text-sm font-semibold text-text-primary mb-4">Parámetros financieros</h2>
           <div className="flex flex-col gap-4">
-            <Input
-              label="Salario mensual"
-              type="number"
-              min="0"
-              value={salario}
-              onChange={e => setSalario(e.target.value)}
-              placeholder="0.00"
-            />
-            <Input
-              label="Meta de ahorro (%)"
-              type="number"
-              min="0"
-              max="100"
-              value={meta}
-              onChange={e => setMeta(e.target.value)}
-              placeholder="20"
-            />
+            <Input label="Salario mensual" type="number" min="0" value={salario} onChange={e => setSalario(e.target.value)} placeholder="0.00" />
+            <Input label="Meta de ahorro (%)" type="number" min="0" max="100" value={meta} onChange={e => setMeta(e.target.value)} placeholder="20" />
             <Select
               label="Moneda"
               value={moneda}
@@ -96,59 +77,37 @@ export default function SettingsPage() {
 
         <div className="bg-surface border border-border rounded-lg p-6">
           <h2 className="text-sm font-semibold text-text-primary mb-1">Google Sheets</h2>
-          <p className="text-xs text-text-muted mb-4">Fuente de datos conectada</p>
+          <p className="text-xs text-text-muted mb-4">Tu hoja de datos conectada</p>
 
           {isConnected ? (
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 p-3 bg-income-light border border-income/20 rounded">
                 <div className="w-2 h-2 rounded-full bg-income shrink-0" />
-                <p className="text-xs text-income font-medium">Conectado</p>
+                <p className="text-xs text-income font-medium">Sesión de Google activa</p>
               </div>
-              {spreadsheetId && (
-                <a
-                  href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-xs text-text-secondary hover:text-balance transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Abrir en Google Sheets
-                </a>
-              )}
+              <a
+                href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-text-secondary hover:text-balance transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Abrir en Google Sheets
+              </a>
               <Button variant="secondary" size="sm" onClick={disconnect}>
-                <Link2Off className="w-3.5 h-3.5" />
-                Desconectar
+                <LogOut className="w-3.5 h-3.5" />
+                Cerrar sesión de Google
               </Button>
             </div>
           ) : (
-            <ConnectSheets
-              onConnect={async (id) => {
-                await connectSheets(id)
-                toast('success', 'Hoja conectada')
+            <GoogleSignIn
+              onSignIn={async () => {
+                try { await signIn() }
+                catch (e) { toast('error', e instanceof Error ? e.message : 'Error') }
               }}
-              onNew={(id) => {
-                setNewSpreadsheetId(id)
-                toast('success', 'Hoja creada y conectada')
-              }}
-              getValidToken={getValidToken}
-              connecting={sheetsConnecting}
+              loading={sheetsConnecting}
             />
           )}
-        </div>
-
-        <div className="bg-surface border border-border rounded-lg p-6">
-          <h2 className="text-sm font-semibold text-text-primary mb-1">Configurar Google OAuth</h2>
-          <p className="text-xs text-text-muted mb-4">
-            Para conectar Google Sheets necesitas un Client ID de Google Cloud.
-          </p>
-          <ol className="flex flex-col gap-2 text-xs text-text-secondary list-decimal list-inside">
-            <li>Ve a <span className="font-medium text-text-primary">console.cloud.google.com</span></li>
-            <li>Crea un proyecto o selecciona uno existente</li>
-            <li>Habilita <span className="font-medium text-text-primary">Google Sheets API</span> y <span className="font-medium text-text-primary">Google Drive API</span></li>
-            <li>En Credenciales, crea un <span className="font-medium text-text-primary">OAuth 2.0 Client ID</span> (tipo: Web application)</li>
-            <li>Agrega tu dominio en <span className="font-medium text-text-primary">Authorized JavaScript origins</span></li>
-            <li>Copia el Client ID y agrégalo como <span className="font-mono text-balance">NEXT_PUBLIC_GOOGLE_CLIENT_ID</span> en tu archivo .env.local</li>
-          </ol>
         </div>
       </div>
     </div>
