@@ -181,6 +181,59 @@ export async function verifySpreadsheet(token: string, id: string): Promise<bool
   }
 }
 
+export async function initializeSheetIfNeeded(token: string, id: string): Promise<void> {
+  const res = await request<{ sheets: { properties: { title: string } }[] }>(
+    `${BASE_URL}/${id}?fields=sheets.properties.title`,
+    { method: 'GET', headers: headers(token) }
+  )
+
+  const existingTitles = res.sheets.map(s => s.properties.title)
+  const needed = [SHEETS.TRANSACTIONS, SHEETS.CONFIG, SHEETS.CATEGORIES].filter(
+    t => !existingTitles.includes(t)
+  )
+
+  if (needed.length > 0) {
+    await request(`${BASE_URL}/${id}:batchUpdate`, {
+      method: 'POST',
+      headers: headers(token),
+      body: JSON.stringify({
+        requests: needed.map(title => ({
+          addSheet: { properties: { title } },
+        })),
+      }),
+    })
+  }
+
+  const checks = await Promise.all([
+    request<{ values?: string[][] }>(
+      `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.TRANSACTIONS + '!A1:G1')}`,
+      { method: 'GET', headers: headers(token) }
+    ),
+    request<{ values?: string[][] }>(
+      `${BASE_URL}/${id}/values/${encodeURIComponent(SHEETS.CONFIG + '!A1:B1')}`,
+      { method: 'GET', headers: headers(token) }
+    ),
+  ])
+
+  const writes: { range: string; values: (string | number)[][] }[] = []
+
+  if (!checks[0].values?.length) {
+    writes.push({ range: `${SHEETS.TRANSACTIONS}!A1`, values: [TRANSACTION_HEADERS] })
+  }
+  if (!checks[1].values?.length) {
+    writes.push(
+      { range: `${SHEETS.CONFIG}!A1`, values: [['salarioMensual', CONFIG_DEFAULTS.salarioMensual], ['metaAhorro', CONFIG_DEFAULTS.metaAhorro], ['moneda', CONFIG_DEFAULTS.moneda]] },
+    )
+  }
+
+  for (const w of writes) {
+    await request(
+      `${BASE_URL}/${id}/values/${encodeURIComponent(w.range)}?valueInputOption=USER_ENTERED`,
+      { method: 'PUT', headers: headers(token), body: JSON.stringify({ values: w.values }) }
+    )
+  }
+}
+
 export function isTokenValid(t: GoogleToken): boolean {
   return t.expires_at > Date.now() + 60_000
 }

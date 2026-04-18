@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { GoogleToken } from '@/lib/types'
 import { STORAGE_KEYS } from '@/lib/constants'
-import { isTokenValid } from '@/lib/sheets-api'
+import { isTokenValid, initializeSheetIfNeeded } from '@/lib/sheets-api'
 
 const GOOGLE_CLIENT_ID = '598402271564-9ubbmf7biorg0pbm761anvo1h1gqtp10.apps.googleusercontent.com'
 const SPREADSHEET_ID = '1PCxDaEqNQfHBPkOnx9TMK0qTkEsJaHHTGgY58Dyd544'
@@ -85,7 +85,8 @@ export function useSheets() {
   const signIn = useCallback(async () => {
     setConnecting(true)
     try {
-      await requestToken()
+      const t = await requestToken()
+      await initializeSheetIfNeeded(t.access_token, SPREADSHEET_ID)
     } finally {
       setConnecting(false)
     }
